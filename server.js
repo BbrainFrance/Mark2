@@ -576,6 +576,20 @@ app.post('/tts', auth, async (req, res) => {
   }
 });
 
+// Servir les fichiers generes (PDF, etc.) depuis /downloads/
+const downloadsDir = path.join(__dirname, 'downloads');
+if (!fs.existsSync(downloadsDir)) {
+  fs.mkdirSync(downloadsDir, { recursive: true });
+}
+app.use('/downloads', express.static(downloadsDir, {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.pdf')) {
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
+    }
+  },
+}));
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route introuvable' });
