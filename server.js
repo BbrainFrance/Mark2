@@ -10,6 +10,7 @@ const { chat } = require('./lib/anthropic');
 const agents = require('./lib/agents');
 const history = require('./lib/history');
 const { getToolDefinitions, executeTool } = require('./lib/tools');
+const jobs = require('./lib/jobs');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -347,6 +348,127 @@ app.post('/chat', auth, async (req, res) => {
 
     res.status(500).json({ error: `Erreur interne: ${err.message}` });
   }
+});
+
+// =====================================================================
+// Chat async (retourne immediatement un jobId, traite en arriere-plan)
+// =====================================================================
+
+app.post('/chat/async', auth, async (req, res) => {
+  const {
+    message,
+    agentId = 'jarvis',
+    source = 'ANDROID',
+    sessionKey,
+    image,
+    imageType,
+  } = req.body;
+
+  if (!message || message.trim().length === 0) {
+    return res.status(400).json({ error: 'Message vide' });
+  }
+
+  const effectiveAgentId = sessionKey || agentId;
+
+  // Les commandes slash restent synchrones
+  if (message.trim().startsWith('/')) {
+    const cmd = handleSlashCommand(message, effectiveAgentId);
+    if (cmd.handled) {
+      history.appendMessage(effectiveAgentId, 'user', message, source);
+      history.appendMessage(effectiveAgentId, 'assistant', cmd.response, 'MARK2');
+      return res.json({
+        jobId: null,
+        status: 'completed',
+        result: {
+          response: cmd.response,
+          agentId: effectiveAgentId,
+          toolCalls: [],
+          timestamp: Date.now(),
+          isCommand: true,
+        },
+      });
+    }
+  }
+
+  const agent = agents.loadAgent(effectiveAgentId);
+  if (!agent) {
+    return res.status(404).json({ error: `Agent "${effectiveAgentId}" introuvable` });
+  }
+
+  const hasImage = image && typeof image === 'string' && image.length > 0;
+  console.log(`[Async] ${source} -> ${agent.label}: "${message.substring(0, 80)}..."${hasImage ? ' [+IMAGE]' : ''}`);
+
+  // Creer le job et repondre immediatement
+  const jobId = jobs.createJob(effectiveAgentId, agent.label, message, source);
+  res.json({ jobId, status: 'processing', agentId: effectiveAgentId, agentLabel: agent.label });
+
+  // Traitement en arriere-plan
+  (async () => {
+    try {
+      const historyText = hasImage ? `[Image jointe] ${message}` : message;
+      history.appendMessage(effectiveAgentId, 'user', historyText, source);
+
+      const contextMessages = history.getContextMessages(effectiveAgentId, 40);
+
+      if (hasImage && contextMessages.length > 0) {
+        const lastIdx = contextMessages.length - 1;
+        const lastMsg = contextMessages[lastIdx];
+        if (lastMsg.role === 'user') {
+          const mediaType = imageType || 'image/jpeg';
+          contextMessages[lastIdx] = {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
+              { type: 'text', text: message },
+            ],
+          };
+        }
+      }
+
+      const toolDefs = getToolDefinitions(agent.enabledTools);
+      const context = { workspace: agent.workspace, agentId: effectiveAgentId };
+      const model = agent.model || activeModel;
+
+      const result = await chat({
+        system: agent.system,
+        messages: contextMessages,
+        tools: toolDefs,
+        executeTool: (name, input) => executeTool(name, input, context),
+        model,
+        maxTokens: agent.maxTokens,
+      });
+
+      history.appendMessage(effectiveAgentId, 'assistant', result.response, 'MARK2');
+
+      jobs.completeJob(jobId, {
+        response: result.response,
+        agentId: effectiveAgentId,
+        agentLabel: agent.label,
+        model,
+        toolCalls: result.toolCalls.map(t => ({ name: t.name, input: t.input })),
+        timestamp: Date.now(),
+      });
+
+      console.log(`[Async] Job ${jobId.substring(0, 8)} termine (${agent.label})`);
+    } catch (err) {
+      console.error(`[Async] Job ${jobId.substring(0, 8)} erreur:`, err.message);
+      jobs.failJob(jobId, err.message);
+    }
+  })();
+});
+
+// Consulter le statut d'un job
+app.get('/jobs/:jobId', auth, (req, res) => {
+  const job = jobs.getJob(req.params.jobId);
+  if (!job) {
+    return res.status(404).json({ error: 'Job introuvable' });
+  }
+  res.json(job);
+});
+
+// Lister les jobs en cours
+app.get('/jobs', auth, (req, res) => {
+  res.json({ jobs: jobs.getActiveJobs() });
 });
 
 // Historique de conversation
