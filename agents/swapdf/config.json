@@ -1,0 +1,8 @@
+{
+  "label": "SwaPDF",
+  "description": "SaaS manipulation PDF (Next.js 14, traitement client-side)",
+  "workspace": "/opt/projects/swapdf",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

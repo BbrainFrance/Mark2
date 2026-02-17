@@ -1,0 +1,8 @@
+{
+  "label": "TradeBrain",
+  "description": "Bot de trading crypto automatise (Python, Hyperliquid)",
+  "workspace": "/home/ubuntu/Bot",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}
