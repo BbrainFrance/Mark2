@@ -1,0 +1,9 @@
+{
+  "label": "Brainstorming",
+  "description": "Bucket de capture d'idees et brainstorming",
+  "workspace": null,
+  "tools": [],
+  "model": null,
+  "maxTokens": 4096,
+  "bucket": true
+}

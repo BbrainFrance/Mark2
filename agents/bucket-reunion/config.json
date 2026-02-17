@@ -1,0 +1,9 @@
+{
+  "label": "Reunion",
+  "description": "Bucket de compte-rendu de reunion",
+  "workspace": null,
+  "tools": [],
+  "model": null,
+  "maxTokens": 4096,
+  "bucket": true
+}

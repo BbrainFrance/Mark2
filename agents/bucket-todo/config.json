@@ -1,0 +1,9 @@
+{
+  "label": "A Faire",
+  "description": "Bucket de capture de taches et to-do",
+  "workspace": null,
+  "tools": [],
+  "model": null,
+  "maxTokens": 4096,
+  "bucket": true
+}
