@@ -160,6 +160,37 @@ app.get('/agents', auth, (req, res) => {
   res.json({ agents: list });
 });
 
+// Creer un nouvel agent
+app.post('/agents', auth, (req, res) => {
+  const { id, label, description, system } = req.body;
+
+  if (!id || typeof id !== 'string') {
+    return res.status(400).json({ error: 'Parametre "id" requis (slug unique)' });
+  }
+
+  const slug = id.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+  if (!slug || slug.length < 2) {
+    return res.status(400).json({ error: 'ID invalide (min 2 caracteres, lettres/chiffres/tirets)' });
+  }
+
+  try {
+    const agent = agents.createAgent(slug, {
+      label: label || slug,
+      description: description || '',
+      system: system || '',
+    });
+
+    if (!agent) {
+      return res.status(500).json({ error: 'Erreur creation agent' });
+    }
+
+    console.log(`[API] Agent cree: ${slug} (${label})`);
+    res.status(201).json({ ok: true, agent: { id: agent.id, label: agent.label } });
+  } catch (err) {
+    res.status(409).json({ error: err.message });
+  }
+});
+
 // Detail d'un agent
 app.get('/agents/:id', auth, (req, res) => {
   const agent = agents.loadAgent(req.params.id);
