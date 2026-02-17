@@ -531,6 +531,51 @@ app.post('/telegram/webhook', async (req, res) => {
   }
 });
 
+// Text-to-Speech via OpenAI
+app.post('/tts', auth, async (req, res) => {
+  const { text, voice } = req.body;
+
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return res.status(400).json({ error: 'Parametre "text" requis' });
+  }
+
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY non configuree' });
+  }
+
+  try {
+    const fetch = (await import('node-fetch')).default;
+    const response = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'tts-1',
+        input: text.trim().substring(0, 4096),
+        voice: voice || 'onyx',
+        response_format: 'mp3',
+        speed: 1.0,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error(`[TTS] OpenAI error ${response.status}: ${errorBody}`);
+      return res.status(response.status).json({ error: `OpenAI TTS error: ${response.status}` });
+    }
+
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-cache');
+    response.body.pipe(res);
+  } catch (err) {
+    console.error('[TTS] Error:', err.message);
+    res.status(500).json({ error: `TTS error: ${err.message}` });
+  }
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route introuvable' });
