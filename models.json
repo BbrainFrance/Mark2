@@ -1,0 +1,33 @@
+{
+  "models": [
+    {
+      "id": "claude-opus-4-20250514",
+      "alias": ["opus", "opus4", "opus 4"],
+      "label": "Claude Opus 4",
+      "description": "Le plus puissant, raisonnement complexe",
+      "tier": "premium"
+    },
+    {
+      "id": "claude-sonnet-4-5-20250514",
+      "alias": ["sonnet", "sonnet4.5", "sonnet 4.5"],
+      "label": "Claude Sonnet 4.5",
+      "description": "Equilibre performance/cout (defaut)",
+      "tier": "standard"
+    },
+    {
+      "id": "claude-sonnet-4-20250514",
+      "alias": ["sonnet4", "sonnet 4"],
+      "label": "Claude Sonnet 4",
+      "description": "Rapide et performant",
+      "tier": "standard"
+    },
+    {
+      "id": "claude-3-5-haiku-20241022",
+      "alias": ["haiku", "haiku3.5", "haiku 3.5"],
+      "label": "Claude Haiku 3.5",
+      "description": "Ultra rapide, le moins cher",
+      "tier": "economy"
+    }
+  ],
+  "default": "claude-sonnet-4-5-20250514"
+}

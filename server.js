@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
@@ -12,6 +14,106 @@ const { getToolDefinitions, executeTool } = require('./lib/tools');
 const app = express();
 const PORT = process.env.PORT || 3456;
 const API_KEY = process.env.MARK2_API_KEY;
+
+// --- Modeles ---
+
+// Modele actif (par defaut celui du .env, modifiable a chaud)
+let activeModel = process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514';
+
+function loadModels() {
+  try {
+    const data = fs.readFileSync(path.join(__dirname, 'models.json'), 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return { models: [], default: activeModel };
+  }
+}
+
+function findModelByAlias(input) {
+  const { models } = loadModels();
+  const search = input.toLowerCase().trim();
+  for (const m of models) {
+    if (m.id === search) return m;
+    if (m.alias.some(a => a === search)) return m;
+  }
+  return null;
+}
+
+/**
+ * Traite les commandes slash (/modele, /agents, /clear, etc.)
+ * Retourne { handled: true, response } si c'est une commande, sinon { handled: false }
+ */
+function handleSlashCommand(message, agentId) {
+  const trimmed = message.trim().toLowerCase();
+
+  // /modele ou /model (sans argument) -> liste les modeles + actif
+  if (trimmed === '/modele' || trimmed === '/model' || trimmed === '/modeles' || trimmed === '/models') {
+    const { models } = loadModels();
+    const lines = models.map(m => {
+      const active = m.id === activeModel ? ' [ACTIF]' : '';
+      return `- **${m.label}**${active} : ${m.description} (aliases: ${m.alias.join(', ')})`;
+    });
+    return {
+      handled: true,
+      response: `Modele actif : **${getActiveModelLabel()}**\n\nModeles disponibles :\n${lines.join('\n')}\n\nPour changer : \`/modele opus\`, \`/modele sonnet\`, \`/modele haiku\`, etc.`,
+    };
+  }
+
+  // /modele <alias> -> switch de modele
+  const modelMatch = trimmed.match(/^\/(modele|model)\s+(.+)$/);
+  if (modelMatch) {
+    const alias = modelMatch[2].trim();
+    const model = findModelByAlias(alias);
+    if (!model) {
+      const { models } = loadModels();
+      const available = models.map(m => m.alias[0]).join(', ');
+      return {
+        handled: true,
+        response: `Modele "${alias}" introuvable. Modeles disponibles : ${available}`,
+      };
+    }
+    activeModel = model.id;
+    return {
+      handled: true,
+      response: `Modele change : **${model.label}** (${model.id})\n${model.description}`,
+    };
+  }
+
+  // /agents -> liste les agents
+  if (trimmed === '/agents') {
+    const list = agents.listAgents();
+    const lines = list.map(a => `- **${a.label}** (${a.id})`);
+    return {
+      handled: true,
+      response: `${list.length} agents disponibles :\n${lines.join('\n')}`,
+    };
+  }
+
+  // /clear -> efface l'historique de l'agent courant
+  if (trimmed === '/clear' || trimmed === '/reset') {
+    history.clearHistory(agentId);
+    return {
+      handled: true,
+      response: `Historique de ${agentId} efface.`,
+    };
+  }
+
+  // /help -> liste les commandes
+  if (trimmed === '/help' || trimmed === '/aide') {
+    return {
+      handled: true,
+      response: `Commandes disponibles :\n- \`/modele\` : voir le modele actif et les modeles disponibles\n- \`/modele <nom>\` : changer de modele (ex: /modele opus, /modele haiku)\n- \`/agents\` : lister les agents\n- \`/clear\` : effacer l'historique de l'agent courant\n- \`/help\` : cette aide`,
+    };
+  }
+
+  return { handled: false };
+}
+
+function getActiveModelLabel() {
+  const { models } = loadModels();
+  const m = models.find(m => m.id === activeModel);
+  return m ? m.label : activeModel;
+}
 
 // --- Middleware ---
 
@@ -43,9 +145,11 @@ app.use((req, res, next) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    version: '1.0.0',
+    version: '1.1.0',
     name: 'Mark2',
     uptime: process.uptime(),
+    model: activeModel,
+    modelLabel: getActiveModelLabel(),
     agents: agents.listAgents().length,
   });
 });
@@ -70,6 +174,39 @@ app.get('/agents/:id', auth, (req, res) => {
   });
 });
 
+// Liste des modeles disponibles
+app.get('/models', auth, (req, res) => {
+  const { models } = loadModels();
+  res.json({
+    active: activeModel,
+    activeLabel: getActiveModelLabel(),
+    models: models.map(m => ({
+      id: m.id,
+      label: m.label,
+      description: m.description,
+      tier: m.tier,
+      active: m.id === activeModel,
+    })),
+  });
+});
+
+// Changer le modele actif
+app.post('/model', auth, (req, res) => {
+  const { model } = req.body;
+  if (!model) {
+    return res.status(400).json({ error: 'Parametre "model" requis' });
+  }
+  const found = findModelByAlias(model);
+  if (!found) {
+    const { models } = loadModels();
+    const available = models.map(m => `${m.label} (${m.alias[0]})`).join(', ');
+    return res.status(404).json({ error: `Modele "${model}" introuvable. Disponibles : ${available}` });
+  }
+  activeModel = found.id;
+  console.log(`[Model] Switch -> ${found.label} (${found.id})`);
+  res.json({ ok: true, model: found.id, label: found.label });
+});
+
 // Chat avec un agent
 app.post('/chat', auth, async (req, res) => {
   const {
@@ -85,6 +222,25 @@ app.post('/chat', auth, async (req, res) => {
 
   // Charger l'agent
   const effectiveAgentId = sessionKey || agentId;
+
+  // Intercepter les commandes slash
+  if (message.trim().startsWith('/')) {
+    const cmd = handleSlashCommand(message, effectiveAgentId);
+    if (cmd.handled) {
+      console.log(`[Cmd] ${source} -> commande: "${message.trim()}"`);
+      history.appendMessage(effectiveAgentId, 'user', message, source);
+      history.appendMessage(effectiveAgentId, 'assistant', cmd.response, 'MARK2');
+      return res.json({
+        response: cmd.response,
+        agentId: effectiveAgentId,
+        agentLabel: effectiveAgentId,
+        toolCalls: [],
+        timestamp: Date.now(),
+        isCommand: true,
+      });
+    }
+  }
+
   const agent = agents.loadAgent(effectiveAgentId);
   if (!agent) {
     return res.status(404).json({ error: `Agent "${effectiveAgentId}" introuvable` });
@@ -103,13 +259,16 @@ app.post('/chat', auth, async (req, res) => {
     const toolDefs = getToolDefinitions(agent.enabledTools);
     const context = { workspace: agent.workspace, agentId: effectiveAgentId };
 
+    // Utiliser le modele actif (sauf si l'agent a un override)
+    const model = agent.model || activeModel;
+
     // Appel Claude avec boucle tool_use
     const result = await chat({
       system: agent.system,
       messages: contextMessages,
       tools: toolDefs,
       executeTool: (name, input) => executeTool(name, input, context),
-      model: agent.model,
+      model,
       maxTokens: agent.maxTokens,
     });
 
@@ -120,6 +279,7 @@ app.post('/chat', auth, async (req, res) => {
       response: result.response,
       agentId: effectiveAgentId,
       agentLabel: agent.label,
+      model,
       toolCalls: result.toolCalls.map(t => ({ name: t.name, input: t.input })),
       timestamp: Date.now(),
     });
@@ -164,6 +324,18 @@ app.post('/voice', auth, async (req, res) => {
     return res.status(400).json({ error: 'Message vide' });
   }
 
+  // Intercepter les commandes slash en vocal aussi
+  if (message.trim().startsWith('/')) {
+    const cmd = handleSlashCommand(message, agentId);
+    if (cmd.handled) {
+      // En vocal, retirer le markdown de la reponse
+      const cleanResponse = cmd.response.replace(/\*\*/g, '').replace(/`/g, '').replace(/\n/g, ' ');
+      history.appendMessage(agentId, 'user', message, source);
+      history.appendMessage(agentId, 'assistant', cleanResponse, 'MARK2');
+      return res.json({ response: cleanResponse, agentId, timestamp: Date.now(), isCommand: true });
+    }
+  }
+
   const agent = agents.loadAgent(agentId);
   if (!agent) {
     return res.status(404).json({ error: `Agent "${agentId}" introuvable` });
@@ -175,12 +347,14 @@ app.post('/voice', auth, async (req, res) => {
     history.appendMessage(agentId, 'user', message, source);
     const contextMessages = history.getContextMessages(agentId, 20);
 
+    const model = agent.model || activeModel;
+
     // Pour le vocal, pas d'outils (reponse directe et rapide)
     const result = await chat({
       system: agent.system + '\n\nIMPORTANT: Tu reponds a l\'oral. Sois concis, naturel, direct. Pas de markdown, pas de backticks, pas de listes. Maximum 3-4 phrases courtes.',
       messages: contextMessages,
       tools: [], // Pas d'outils en mode vocal
-      model: agent.model,
+      model,
       maxTokens: 1024,
     });
 
@@ -189,6 +363,7 @@ app.post('/voice', auth, async (req, res) => {
     res.json({
       response: result.response,
       agentId,
+      model,
       timestamp: Date.now(),
     });
 
@@ -215,12 +390,12 @@ app.use((req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════╗');
-  console.log('  ║          MARK2 Engine v1.0.0         ║');
+  console.log('  ║          MARK2 Engine v1.1.0         ║');
   console.log('  ║   Moteur d\'Agents IA Custom          ║');
   console.log('  ╚══════════════════════════════════════╝');
   console.log('');
   console.log(`  Port:    ${PORT}`);
-  console.log(`  Modele:  ${process.env.CLAUDE_MODEL || 'claude-sonnet-4-5-20250514'}`);
+  console.log(`  Modele:  ${getActiveModelLabel()} (${activeModel})`);
   console.log(`  Auth:    ${API_KEY ? 'active' : 'DESACTIVEE (pas de MARK2_API_KEY)'}`);
   console.log(`  Agents:  ${agents.listAgents().length} charge(s)`);
   console.log('');

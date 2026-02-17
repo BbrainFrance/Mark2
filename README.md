@@ -30,14 +30,30 @@ Mark2/
 
 | Methode | Route | Description |
 |---------|-------|-------------|
-| GET | `/health` | Health check |
+| GET | `/health` | Health check + modele actif |
 | GET | `/agents` | Liste des agents |
 | GET | `/agents/:id` | Detail d'un agent |
 | POST | `/chat` | Chat avec un agent (avec tool_use) |
 | POST | `/voice` | Mode vocal (reponse courte, sans outils) |
+| GET | `/models` | Liste des modeles disponibles |
+| POST | `/model` | Changer le modele actif |
 | GET | `/history/:agentId` | Historique de conversation |
 | DELETE | `/history/:agentId` | Effacer l'historique |
 | POST | `/reload` | Recharger la config des agents |
+
+## Commandes Slash
+
+Depuis n'importe quel chat (web ou app) :
+
+| Commande | Description |
+|----------|-------------|
+| `/modele` | Voir le modele actif et les modeles disponibles |
+| `/modele opus` | Passer sur Claude Opus 4 |
+| `/modele sonnet` | Passer sur Claude Sonnet 4.5 |
+| `/modele haiku` | Passer sur Claude Haiku 3.5 |
+| `/agents` | Lister les agents |
+| `/clear` | Effacer l'historique de l'agent courant |
+| `/help` | Aide |
 
 ## Installation
 
