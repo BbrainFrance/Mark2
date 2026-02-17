@@ -1,0 +1,8 @@
+{
+  "label": "ComptaApp",
+  "description": "Agent specialise comptabilite et application ComptaApp",
+  "workspace": "/opt/projects/comptaapp",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

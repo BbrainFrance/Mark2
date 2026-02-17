@@ -1,0 +1,8 @@
+{
+  "label": "Jarvis",
+  "description": "Agent principal - assistant personnel polyvalent",
+  "workspace": "/opt/mark2",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

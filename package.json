@@ -1,0 +1,20 @@
+{
+  "name": "mark2",
+  "version": "1.0.0",
+  "description": "Mark2 - Moteur d'agents IA custom (remplace OpenClaw)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": ["ai", "agent", "anthropic", "claude"],
+  "author": "BbrainFrance",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.0",
+    "uuid": "^11.0.0"
+  }
+}

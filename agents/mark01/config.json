@@ -1,0 +1,8 @@
+{
+  "label": "Mark01",
+  "description": "Agent specialise app Android Mark01 + lunettes Ray-Ban Meta",
+  "workspace": "/opt/projects/Mark01",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

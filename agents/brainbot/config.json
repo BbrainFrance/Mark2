@@ -1,0 +1,8 @@
+{
+  "label": "BrainBot",
+  "description": "Agent bot Telegram de Bbrain",
+  "workspace": "/opt/projects/brainbot",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

@@ -1,0 +1,8 @@
+{
+  "label": "Salesbrain",
+  "description": "Agent specialise ventes et CRM de Bbrain",
+  "workspace": "/opt/projects/salesbrain",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}

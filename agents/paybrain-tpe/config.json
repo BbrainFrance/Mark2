@@ -1,0 +1,8 @@
+{
+  "label": "PayBrain TPE",
+  "description": "Agent specialise terminal de paiement (TPE) PayBrain",
+  "workspace": "/opt/projects/paybrain-tpe",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "model": null,
+  "maxTokens": 4096
+}
