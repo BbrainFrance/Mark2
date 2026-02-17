@@ -2,7 +2,7 @@
   "label": "BusinessPlan PayBrain",
   "description": "Agent specialise business plan et strategie PayBrain",
   "workspace": "/opt/projects/businessplan-paybrain",
-  "tools": ["read_file", "write_file", "list_files", "search_files"],
+  "tools": ["read_file", "write_file", "list_files", "search_files", "generate_document", "generate_pdf"],
   "model": null,
-  "maxTokens": 4096
+  "maxTokens": 16384
 }

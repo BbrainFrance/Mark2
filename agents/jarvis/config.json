@@ -2,7 +2,7 @@
   "label": "Jarvis",
   "description": "Agent principal - assistant personnel polyvalent, acces cross-agents",
   "workspace": "/opt/mark2",
-  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "read_agent_history", "list_agents"],
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "read_agent_history", "list_agents", "generate_document", "generate_pdf"],
   "model": null,
-  "maxTokens": 4096
+  "maxTokens": 16384
 }

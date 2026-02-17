@@ -2,7 +2,7 @@
   "label": "PayBrain App",
   "description": "Agent specialise application mobile PayBrain",
   "workspace": "/opt/projects/paybrain-app",
-  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files"],
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "generate_document", "generate_pdf"],
   "model": null,
-  "maxTokens": 4096
+  "maxTokens": 16384
 }

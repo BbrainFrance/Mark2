@@ -2,8 +2,8 @@
   "label": "A Faire",
   "description": "Bucket de capture de taches et to-do",
   "workspace": null,
-  "tools": [],
+  "tools": ["generate_document", "generate_pdf"],
   "model": null,
-  "maxTokens": 4096,
+  "maxTokens": 16384,
   "bucket": true
 }
