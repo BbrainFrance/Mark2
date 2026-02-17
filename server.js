@@ -11,6 +11,7 @@ const agents = require('./lib/agents');
 const history = require('./lib/history');
 const { getToolDefinitions, executeTool } = require('./lib/tools');
 const jobs = require('./lib/jobs');
+const twilioModule = require('./lib/twilio');
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -712,6 +713,114 @@ app.use('/downloads', express.static(downloadsDir, {
   },
 }));
 
+// =====================================================================
+// TWILIO - Conference Calls avec Jarvis
+// =====================================================================
+
+const TWILIO_BASE_URL = process.env.MARK2_PUBLIC_URL || `http://localhost:${PORT}`;
+
+// Creer une conference (appele par Mark01 Android)
+app.post('/twilio/conference', async (req, res) => {
+  try {
+    const { userPhone, targetPhone, targetName } = req.body;
+
+    if (!userPhone || !targetPhone) {
+      return res.status(400).json({ error: 'userPhone et targetPhone requis' });
+    }
+
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_PHONE_NUMBER) {
+      return res.status(500).json({ error: 'Twilio non configure (SID/Token/Phone manquant dans .env)' });
+    }
+
+    const result = await twilioModule.createConference({
+      userPhone,
+      targetPhone,
+      targetName: targetName || 'Inconnu',
+      baseUrl: TWILIO_BASE_URL,
+    });
+
+    res.json({
+      success: true,
+      conferenceId: result.conferenceId,
+      message: `Conference creee. Appel en cours vers ${targetName || targetPhone}...`,
+    });
+  } catch (err) {
+    console.error('[Twilio] Conference error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Webhook TwiML - quand un participant decroche
+app.post('/twilio/voice', (req, res) => {
+  const conferenceName = req.query.conference;
+  const role = req.query.role || 'user';
+
+  if (!conferenceName) {
+    res.type('text/xml');
+    return res.send('<Response><Say language="fr-FR">Erreur de configuration.</Say><Hangup/></Response>');
+  }
+
+  const twiml = twilioModule.generateConferenceTwiml(conferenceName, role, TWILIO_BASE_URL);
+  res.type('text/xml');
+  res.send(twiml);
+});
+
+// Webhook statut des appels
+app.post('/twilio/status', (req, res) => {
+  const conferenceId = req.query.conference;
+  const role = req.query.role;
+  const callStatus = req.body.CallStatus;
+
+  if (conferenceId && role && callStatus) {
+    twilioModule.updateParticipantStatus(conferenceId, role, callStatus);
+  }
+
+  res.sendStatus(200);
+});
+
+// Webhook statut de la conference elle-meme
+app.post('/twilio/conference-status', (req, res) => {
+  const conferenceName = req.query.conference;
+  const event = req.body.StatusCallbackEvent;
+
+  console.log(`[Twilio] Conference event: ${event} for ${conferenceName}`);
+  res.sendStatus(200);
+});
+
+// Terminer une conference
+app.post('/twilio/conference/:id/end', async (req, res) => {
+  try {
+    const result = await twilioModule.endConference(req.params.id);
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+});
+
+// Lister les conferences actives
+app.get('/twilio/conferences', (req, res) => {
+  res.json(twilioModule.getActiveConferences());
+});
+
+// Details d'une conference
+app.get('/twilio/conference/:id', (req, res) => {
+  const conf = twilioModule.getConference(req.params.id);
+  if (!conf) {
+    return res.status(404).json({ error: 'Conference introuvable' });
+  }
+  res.json({
+    id: conf.id,
+    status: conf.status,
+    targetName: conf.targetName,
+    participants: conf.participants,
+    transcription: conf.transcription,
+    createdAt: conf.createdAt,
+  });
+});
+
 // 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route introuvable' });
@@ -719,7 +828,63 @@ app.use((req, res) => {
 
 // --- Start ---
 
-app.listen(PORT, '0.0.0.0', () => {
+// Demarrer le serveur HTTP + WebSocket
+const http = require('http');
+const WebSocket = require('ws');
+
+const server = http.createServer(app);
+
+// WebSocket pour le stream audio Twilio
+const wss = new WebSocket.Server({ server, path: '/twilio/audio-stream' });
+
+wss.on('connection', (ws) => {
+  console.log('[Twilio WS] New audio stream connection');
+
+  let streamSid = null;
+  let conferenceRole = null;
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data);
+
+      switch (msg.event) {
+        case 'connected':
+          console.log('[Twilio WS] Stream connected');
+          break;
+
+        case 'start':
+          streamSid = msg.start.streamSid;
+          conferenceRole = msg.start.customParameters?.role || 'unknown';
+          console.log(`[Twilio WS] Stream started: ${streamSid} (role: ${conferenceRole})`);
+          break;
+
+        case 'media':
+          // msg.media.payload contient l'audio en base64 (mulaw 8kHz)
+          // Pour l'instant on log juste, la transcription viendra en Phase 2
+          break;
+
+        case 'stop':
+          console.log(`[Twilio WS] Stream stopped: ${streamSid}`);
+          break;
+
+        default:
+          break;
+      }
+    } catch (err) {
+      // Ignorer les messages non-JSON
+    }
+  });
+
+  ws.on('close', () => {
+    console.log(`[Twilio WS] Stream disconnected: ${streamSid}`);
+  });
+
+  ws.on('error', (err) => {
+    console.error('[Twilio WS] Error:', err.message);
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════╗');
   console.log('  ║          MARK2 Engine v1.1.0         ║');
@@ -729,6 +894,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  Port:    ${PORT}`);
   console.log(`  Modele:  ${getActiveModelLabel()} (${activeModel})`);
   console.log(`  Auth:    ${API_KEY ? 'active' : 'DESACTIVEE (pas de MARK2_API_KEY)'}`);
+  console.log(`  Twilio:  ${process.env.TWILIO_PHONE_NUMBER ? process.env.TWILIO_PHONE_NUMBER + ' (actif)' : 'non configure'}`);
   console.log(`  Agents:  ${agents.listAgents().length} charge(s)`);
   console.log('');
 
