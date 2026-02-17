@@ -118,7 +118,7 @@ function getActiveModelLabel() {
 // --- Middleware ---
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '20mb' }));
 
 // Auth middleware
 function auth(req, res, next) {
@@ -214,6 +214,8 @@ app.post('/chat', auth, async (req, res) => {
     agentId = 'jarvis',
     source = 'WEB',
     sessionKey,
+    image,
+    imageType,
   } = req.body;
 
   if (!message || message.trim().length === 0) {
@@ -246,14 +248,32 @@ app.post('/chat', auth, async (req, res) => {
     return res.status(404).json({ error: `Agent "${effectiveAgentId}" introuvable` });
   }
 
-  console.log(`[Chat] ${source} -> ${agent.label}: "${message.substring(0, 80)}..."`);
+  const hasImage = image && typeof image === 'string' && image.length > 0;
+  console.log(`[Chat] ${source} -> ${agent.label}: "${message.substring(0, 80)}..."${hasImage ? ' [+IMAGE]' : ''}`);
 
   try {
-    // Ajouter le message utilisateur a l'historique
-    history.appendMessage(effectiveAgentId, 'user', message, source);
+    // Sauvegarder le texte dans l'historique (pas l'image base64)
+    const historyText = hasImage ? `[Image jointe] ${message}` : message;
+    history.appendMessage(effectiveAgentId, 'user', historyText, source);
 
     // Charger le contexte (derniers messages)
     const contextMessages = history.getContextMessages(effectiveAgentId, 40);
+
+    // Si une image est presente, modifier le dernier message user pour inclure l'image
+    if (hasImage && contextMessages.length > 0) {
+      const lastIdx = contextMessages.length - 1;
+      const lastMsg = contextMessages[lastIdx];
+      if (lastMsg.role === 'user') {
+        const mediaType = imageType || 'image/jpeg';
+        contextMessages[lastIdx] = {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
+            { type: 'text', text: message },
+          ],
+        };
+      }
+    }
 
     // Preparer les outils
     const toolDefs = getToolDefinitions(agent.enabledTools);
@@ -318,6 +338,8 @@ app.post('/voice', auth, async (req, res) => {
     message,
     agentId = 'jarvis',
     source = 'ANDROID',
+    image,
+    imageType,
   } = req.body;
 
   if (!message || message.trim().length === 0) {
@@ -341,11 +363,29 @@ app.post('/voice', auth, async (req, res) => {
     return res.status(404).json({ error: `Agent "${agentId}" introuvable` });
   }
 
-  console.log(`[Voice] ${source} -> ${agent.label}: "${message.substring(0, 80)}..."`);
+  const hasImage = image && typeof image === 'string' && image.length > 0;
+  console.log(`[Voice] ${source} -> ${agent.label}: "${message.substring(0, 80)}..."${hasImage ? ' [+IMAGE]' : ''}`);
 
   try {
-    history.appendMessage(agentId, 'user', message, source);
+    const historyText = hasImage ? `[Image jointe] ${message}` : message;
+    history.appendMessage(agentId, 'user', historyText, source);
     const contextMessages = history.getContextMessages(agentId, 20);
+
+    // Si une image est presente, modifier le dernier message user
+    if (hasImage && contextMessages.length > 0) {
+      const lastIdx = contextMessages.length - 1;
+      const lastMsg = contextMessages[lastIdx];
+      if (lastMsg.role === 'user') {
+        const mediaType = imageType || 'image/jpeg';
+        contextMessages[lastIdx] = {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
+            { type: 'text', text: message },
+          ],
+        };
+      }
+    }
 
     const model = agent.model || activeModel;
 
@@ -378,6 +418,86 @@ app.post('/reload', auth, (req, res) => {
   agents.reloadAll();
   const list = agents.listAgents();
   res.json({ ok: true, agents: list });
+});
+
+// --- Telegram Webhook ---
+const telegram = require('./lib/telegram');
+
+app.post('/telegram/webhook', async (req, res) => {
+  // Repondre immediatement a Telegram (eviter timeout)
+  res.json({ ok: true });
+
+  try {
+    const update = req.body;
+    const msg = update.message;
+    if (!msg || !msg.text) return;
+
+    const chatId = msg.chat.id;
+    const text = msg.text.trim();
+
+    // Verifier l'autorisation
+    if (!telegram.isAuthorized(chatId)) {
+      console.log(`[Telegram] Message non autorise de chat_id=${chatId}`);
+      return;
+    }
+
+    console.log(`[Telegram] Message de ${msg.from?.first_name || chatId}: "${text.substring(0, 80)}"`);
+
+    // Commandes Telegram specifiques (/start, /agent)
+    const tgCmd = telegram.parseTelegramCommand(text, chatId);
+    if (tgCmd.handled) {
+      await telegram.sendMessage(chatId, tgCmd.response);
+      return;
+    }
+
+    // Commandes slash Mark2 (/modele, /agents, /clear, /help)
+    const state = telegram.getState(chatId);
+    if (text.startsWith('/')) {
+      const cmd = handleSlashCommand(text, state.agentId);
+      if (cmd.handled) {
+        // Nettoyer le markdown Mark2 pour Telegram
+        history.appendMessage(state.agentId, 'user', text, 'TELEGRAM');
+        history.appendMessage(state.agentId, 'assistant', cmd.response, 'MARK2');
+        await telegram.sendMessage(chatId, cmd.response);
+        return;
+      }
+    }
+
+    // Message normal -> envoyer a l'agent actif
+    const agent = agents.loadAgent(state.agentId);
+    if (!agent) {
+      await telegram.sendMessage(chatId, `Agent "${state.agentId}" introuvable. Utilise /agent jarvis pour revenir a Jarvis.`);
+      return;
+    }
+
+    // Sauvegarder et charger le contexte
+    history.appendMessage(state.agentId, 'user', text, 'TELEGRAM');
+    const contextMessages = history.getContextMessages(state.agentId, 30);
+
+    const model = agent.model || activeModel;
+
+    const result = await chat({
+      system: agent.system,
+      messages: contextMessages,
+      tools: getToolDefinitions(agent.enabledTools),
+      executeTool: (name, input) => executeTool(name, input, { workspace: agent.workspace, agentId: state.agentId }),
+      model,
+      maxTokens: agent.maxTokens,
+    });
+
+    history.appendMessage(state.agentId, 'assistant', result.response, 'MARK2');
+
+    await telegram.sendMessage(chatId, result.response);
+
+  } catch (err) {
+    console.error('[Telegram] Erreur webhook:', err.message);
+    try {
+      const chatId = req.body?.message?.chat?.id;
+      if (chatId) {
+        await telegram.sendMessage(chatId, `Erreur: ${err.message}`);
+      }
+    } catch { /* ignore */ }
+  }
 });
 
 // 404
