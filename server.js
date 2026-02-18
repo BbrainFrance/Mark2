@@ -207,6 +207,41 @@ app.get('/agents/:id', auth, (req, res) => {
   });
 });
 
+// Envoyer un message a un agent (inter-agent communication)
+app.post('/agents/:id/message', auth, (req, res) => {
+  const { id } = req.params;
+  const { message, from = 'SYSTEM' } = req.body;
+
+  if (!message || typeof message !== 'string' || message.trim().length === 0) {
+    return res.status(400).json({ error: 'Parametre "message" requis' });
+  }
+
+  // Verifier que l'agent existe
+  const agent = agents.loadAgent(id);
+  if (!agent) {
+    return res.status(404).json({ error: 'Agent introuvable' });
+  }
+
+  // Ajouter le message a l'historique de l'agent cible
+  const prefixedMessage = `[Message from ${from}]\n\n${message.trim()}`;
+  
+  history.addMessage(id, {
+    role: 'user',
+    content: prefixedMessage,
+    source: 'INTER_AGENT',
+    from: from,
+  });
+
+  console.log(`[Inter-Agent] ${from} -> ${id}: ${message.substring(0, 50)}...`);
+
+  res.json({
+    ok: true,
+    agentId: id,
+    from: from,
+    message: 'Message delivered to agent',
+  });
+});
+
 // Liste des modeles disponibles
 app.get('/models', auth, (req, res) => {
   const { models } = loadModels();
