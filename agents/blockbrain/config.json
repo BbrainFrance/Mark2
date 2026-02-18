@@ -2,7 +2,7 @@
   "label": "Blockbrain",
   "description": "Agent specialise blockchain et projets Blockbrain",
   "workspace": "/opt/projects/blockbrain",
-  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "generate_document", "generate_pdf"],
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "read_agent_history", "generate_document", "generate_pdf"],
   "model": null,
   "maxTokens": 16384
 }
