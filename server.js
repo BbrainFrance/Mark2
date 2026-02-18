@@ -374,6 +374,9 @@ app.post('/chat', auth, async (req, res) => {
     if (err.status === 401) {
       return res.status(500).json({ error: 'Cle API Anthropic invalide.' });
     }
+    if (err.status === 400 && err.message && err.message.includes('prompt is too long')) {
+      return res.status(500).json({ error: 'Conversation trop longue, historique tronque. Reessayez.' });
+    }
 
     res.status(500).json({ error: `Erreur interne: ${err.message}` });
   }
