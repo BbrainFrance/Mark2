@@ -1,0 +1,8 @@
+{
+  "label": "AI.F.C",
+  "description": "Agent specialise dans le developpement de AI Fighting Championship - plateforme de combats d'IA",
+  "workspace": "/opt/mark2/repos/aifc",
+  "tools": ["execute_command", "read_file", "write_file", "list_files", "search_files", "read_agent_history", "generate_document", "generate_pdf"],
+  "model": null,
+  "maxTokens": 16384
+}
