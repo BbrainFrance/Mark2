@@ -222,15 +222,8 @@ app.post('/agents/:id/message', auth, (req, res) => {
     return res.status(404).json({ error: 'Agent introuvable' });
   }
 
-  // Ajouter le message a l'historique de l'agent cible
   const prefixedMessage = `[Message from ${from}]\n\n${message.trim()}`;
-  
-  history.addMessage(id, {
-    role: 'user',
-    content: prefixedMessage,
-    source: 'INTER_AGENT',
-    from: from,
-  });
+  history.appendMessage(id, 'user', prefixedMessage, 'INTER_AGENT');
 
   console.log(`[Inter-Agent] ${from} -> ${id}: ${message.substring(0, 50)}...`);
 
