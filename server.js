@@ -353,8 +353,20 @@ app.post('/chat', auth, async (req, res) => {
       maxTokens: agent.maxTokens,
     });
 
-    // Sauvegarder la reponse dans l'historique
-    history.appendMessage(effectiveAgentId, 'assistant', result.response, 'MARK2');
+    // Sauvegarder la reponse avec un resume des tool calls pour que l'agent
+    // se souvienne de ce qu'il a REELLEMENT fait entre les messages
+    let responseToSave = result.response;
+    if (result.toolCalls.length > 0) {
+      const toolSummary = result.toolCalls.map(t => {
+        const args = Object.entries(t.input || {})
+          .filter(([k]) => k !== 'content')
+          .map(([k, v]) => `${k}=${typeof v === 'string' && v.length > 80 ? v.substring(0, 80) + '...' : v}`)
+          .join(', ');
+        return `- ${t.name}(${args})`;
+      }).join('\n');
+      responseToSave += `\n\n[OUTILS EXECUTES DANS CE TOUR]\n${toolSummary}`;
+    }
+    history.appendMessage(effectiveAgentId, 'assistant', responseToSave, 'MARK2');
 
     res.json({
       response: result.response,
@@ -470,7 +482,18 @@ app.post('/chat/async', auth, async (req, res) => {
         maxTokens: agent.maxTokens,
       });
 
-      history.appendMessage(effectiveAgentId, 'assistant', result.response, 'MARK2');
+      let responseToSave = result.response;
+      if (result.toolCalls.length > 0) {
+        const toolSummary = result.toolCalls.map(t => {
+          const args = Object.entries(t.input || {})
+            .filter(([k]) => k !== 'content')
+            .map(([k, v]) => `${k}=${typeof v === 'string' && v.length > 80 ? v.substring(0, 80) + '...' : v}`)
+            .join(', ');
+          return `- ${t.name}(${args})`;
+        }).join('\n');
+        responseToSave += `\n\n[OUTILS EXECUTES DANS CE TOUR]\n${toolSummary}`;
+      }
+      history.appendMessage(effectiveAgentId, 'assistant', responseToSave, 'MARK2');
 
       jobs.completeJob(jobId, {
         response: result.response,
@@ -670,7 +693,18 @@ app.post('/telegram/webhook', async (req, res) => {
       maxTokens: agent.maxTokens,
     });
 
-    history.appendMessage(state.agentId, 'assistant', result.response, 'MARK2');
+    let telegramResponseToSave = result.response;
+    if (result.toolCalls.length > 0) {
+      const toolSummary = result.toolCalls.map(t => {
+        const args = Object.entries(t.input || {})
+          .filter(([k]) => k !== 'content')
+          .map(([k, v]) => `${k}=${typeof v === 'string' && v.length > 80 ? v.substring(0, 80) + '...' : v}`)
+          .join(', ');
+        return `- ${t.name}(${args})`;
+      }).join('\n');
+      telegramResponseToSave += `\n\n[OUTILS EXECUTES DANS CE TOUR]\n${toolSummary}`;
+    }
+    history.appendMessage(state.agentId, 'assistant', telegramResponseToSave, 'MARK2');
 
     await telegram.sendMessage(chatId, result.response);
 
